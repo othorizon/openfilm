@@ -1,5 +1,33 @@
 # openfilm
 
+## 0.3.0
+
+### Minor Changes
+
+- [#61](https://github.com/openfilm/openfilm/pull/61) [`a5b0917`](https://github.com/openfilm/openfilm/commit/a5b0917de6bb2fcb490bb65cb957d6c9eadf2c19) Thanks [@taavie-z](https://github.com/taavie-z)! - Export editing projects for Final Cut Pro as FCPXML with their media, the main picture track on the primary storyline, connected overlays and separate audio clips or mixed stems. Separate audio clips retain Studio's row grouping with an audio role per row. HTML pages render as ProRes clips with alpha; subtitles are included as editable title clips above the picture tracks with a separate SRT copy.
+
+### Patch Changes
+
+- [#75](https://github.com/openfilm/openfilm/pull/75) [`6a82e79`](https://github.com/openfilm/openfilm/commit/6a82e7987cd7174739a2aba62513880573fe3216) Thanks [@PazChen](https://github.com/PazChen)! - Studio: files imported together into a folder that is not there yet all land. One of them could be refused as "not a path inside the project" when another import made the folder at the same moment.
+
+- [#68](https://github.com/openfilm/openfilm/pull/68) [`c164fee`](https://github.com/openfilm/openfilm/commit/c164fee480a36fa5f70885d80df1a404ce3b5764) Thanks [@PazChen](https://github.com/PazChen)! - Studio: a picture's `url()` left with an open quote in a page's changes no longer stalls the editor.
+
+- [#83](https://github.com/openfilm/openfilm/pull/83) [`5c2000b`](https://github.com/openfilm/openfilm/commit/5c2000b8cd049074f7944e31b8d991d8dfc69bea) Thanks [@PazChen](https://github.com/PazChen)! - `openfilm capture` is gone: an agent takes a picture of a live web page with its own tools, so OpenFilm's core leaves it out. The keynote and screen-demo skills no longer point to it.
+
+- [#87](https://github.com/openfilm/openfilm/pull/87) [`bd81148`](https://github.com/openfilm/openfilm/commit/bd811486aff50f0eeea33a8bc6e196a994bf8ded) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: Gemini CLI is no longer one of the chat's agents. Google stopped serving it to personal accounts on June 18, 2026; Gemini models are still there through Your own key and as a media service.
+
+- [#88](https://github.com/openfilm/openfilm/pull/88) [`893641d`](https://github.com/openfilm/openfilm/commit/893641de9e901f593b0dd4a75ac0dcb03cb8e3e8) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: each of your own models takes its context length in Settings, so the agent compacts before the model's own limit instead of at 128K.
+
+- [#63](https://github.com/openfilm/openfilm/pull/63) [`4802dfd`](https://github.com/openfilm/openfilm/commit/4802dfdaa27ed30ff466978fe9bc7ac833ee4644) Thanks [@zhoushoujianwork](https://github.com/zhoushoujianwork)! - Open Settings from the native menu with Command-comma on macOS or Control-comma on Windows and Linux, including when no project is open.
+
+- [#70](https://github.com/openfilm/openfilm/pull/70) [`4934641`](https://github.com/openfilm/openfilm/commit/4934641f649d2f9dc992ecaceb62709485f8708a) Thanks [@GZUCMHjy](https://github.com/GZUCMHjy)! - Studio: a preview the player cancels closes its file, so a project can be renamed on Windows.
+
+- [#72](https://github.com/openfilm/openfilm/pull/72) [`c97b30d`](https://github.com/openfilm/openfilm/commit/c97b30d553d2210cb233eaeff2aea00fef0d3e18) Thanks [@HEOJUNFO](https://github.com/HEOJUNFO)! - A subtitle line with `&`, `<` or `>` reads as written in an exported WebVTT file. A line like `Tom & <Jerry>` lost `<Jerry>`, which players read as a tag, and a speaker's `&` broke the voice tag; they are now written as WebVTT's `&amp;`, `&lt;` and `&gt;`, as the voice-over captions already were. `-->` in a line stays `-->` instead of turning into `→`.
+
+- [#74](https://github.com/openfilm/openfilm/pull/74) [`6f8ce6e`](https://github.com/openfilm/openfilm/commit/6f8ce6e89c5cb1a5195ccba764565dedbb19b6a3) Thanks [@l458022](https://github.com/l458022)! - Render: on Windows, WARP ("Microsoft Basic Render Driver", what a computer without a GPU driver or a remote session falls back to) counts as software, so `look` warns about it and render doesn't keep Vulkan on it.
+
+- [#73](https://github.com/openfilm/openfilm/pull/73) [`9018975`](https://github.com/openfilm/openfilm/commit/90189757998c75c68c4fa5c534dca363b8907768) Thanks [@HEOJUNFO](https://github.com/HEOJUNFO)! - On Windows, render, look and Studio draw WebGL on the GPU. Headless Chromium picked no graphics backend there and fell back to SwiftShader, which draws on the CPU; it now starts with Vulkan, reads the renderer once, and keeps Chromium's default when Vulkan doesn't start or is software too (a virtual machine, a CI runner, a computer without a Vulkan driver).
+
 ## 0.2.0
 
 ### Minor Changes

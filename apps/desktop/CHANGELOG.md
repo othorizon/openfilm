@@ -1,5 +1,36 @@
 # @openfilm/desktop
 
+## 0.3.0
+
+### Minor Changes
+
+- [#61](https://github.com/openfilm/openfilm/pull/61) [`a5b0917`](https://github.com/openfilm/openfilm/commit/a5b0917de6bb2fcb490bb65cb957d6c9eadf2c19) Thanks [@taavie-z](https://github.com/taavie-z)! - Export editing projects for Final Cut Pro as FCPXML with their media, the main picture track on the primary storyline, connected overlays and separate audio clips or mixed stems. Separate audio clips retain Studio's row grouping with an audio role per row. HTML pages render as ProRes clips with alpha; subtitles are included as editable title clips above the picture tracks with a separate SRT copy.
+
+### Patch Changes
+
+- [#89](https://github.com/openfilm/openfilm/pull/89) [`7a64d1f`](https://github.com/openfilm/openfilm/commit/7a64d1feacdb59fb631694af7501a4ca570254ca) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: a chat turn that fails says why (the model service didn't answer, the context is too long, and others) instead of "Internal error".
+
+- [#67](https://github.com/openfilm/openfilm/pull/67) [`4047538`](https://github.com/openfilm/openfilm/commit/4047538da31465162b3ff3c6298cf2fecd7a28e7) Thanks [@cristinamadureira353-svg](https://github.com/cristinamadureira353-svg)! - Desktop: the thinking effort picked in the chat reaches the agent after a model change, even when the agent resets it to its own default when the model changes.
+
+- [#87](https://github.com/openfilm/openfilm/pull/87) [`bd81148`](https://github.com/openfilm/openfilm/commit/bd811486aff50f0eeea33a8bc6e196a994bf8ded) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: Gemini CLI is no longer one of the chat's agents. Google stopped serving it to personal accounts on June 18, 2026; Gemini models are still there through Your own key and as a media service.
+
+- [#92](https://github.com/openfilm/openfilm/pull/92) [`120193c`](https://github.com/openfilm/openfilm/commit/120193c63329c61ae2863dd681f6c5ed31b5a9bf) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: the app's own agent waits up to 15 minutes for a model that thinks quietly before answering, says it is waiting after 2 minutes, and its failure says the real time.
+
+- [#88](https://github.com/openfilm/openfilm/pull/88) [`893641d`](https://github.com/openfilm/openfilm/commit/893641de9e901f593b0dd4a75ac0dcb03cb8e3e8) Thanks [@PazChen](https://github.com/PazChen)! - Desktop: each of your own models takes its context length in Settings, so the agent compacts before the model's own limit instead of at 128K.
+
+- [#66](https://github.com/openfilm/openfilm/pull/66) [`7fc46b2`](https://github.com/openfilm/openfilm/commit/7fc46b2cff7e8690327a07cb2640b3361de6a4c1) Thanks [@cristinamadureira353-svg](https://github.com/cristinamadureira353-svg)! - Desktop: a folder dragged into the chat now goes into the project — every file in it, hidden ones left out — instead of "That is not a file."
+
+- [#63](https://github.com/openfilm/openfilm/pull/63) [`4802dfd`](https://github.com/openfilm/openfilm/commit/4802dfdaa27ed30ff466978fe9bc7ac833ee4644) Thanks [@zhoushoujianwork](https://github.com/zhoushoujianwork)! - Open Settings from the native menu with Command-comma on macOS or Control-comma on Windows and Linux, including when no project is open.
+
+- [#82](https://github.com/openfilm/openfilm/pull/82) [`2e72ef1`](https://github.com/openfilm/openfilm/commit/2e72ef1126487775c876412f4e9fefcf96fea27b) Thanks [@zhoushoujianwork](https://github.com/zhoushoujianwork)! - Keep the outgoing project visible until its replacement is ready when closing a tab, avoiding an empty-window flash.
+
+- [#62](https://github.com/openfilm/openfilm/pull/62) [`a5b185c`](https://github.com/openfilm/openfilm/commit/a5b185c0fac0fc91c989eae3afdd81bf258e7014) Thanks [@zhoushoujianwork](https://github.com/zhoushoujianwork)! - Keep the app running when its window is closed on macOS, so the Dock can reopen it without losing tabs or stopping agents. Command-W closes the window when no project tab is open on macOS. Explicit Quit exits even while Studio is starting or after startup fails; Windows and Linux keep their existing Close Tab behavior.
+
+- [#65](https://github.com/openfilm/openfilm/pull/65) [`7ffdc5a`](https://github.com/openfilm/openfilm/commit/7ffdc5a10839bf32b11c12d5ea27390ca6f984a7) Thanks [@cristinamadureira353-svg](https://github.com/cristinamadureira353-svg)! - Desktop: MiniMax Code is one of the agents the chat can connect, its `mcode` program over ACP like the others.
+
+- Updated dependencies [[`6a82e79`](https://github.com/openfilm/openfilm/commit/6a82e7987cd7174739a2aba62513880573fe3216), [`c164fee`](https://github.com/openfilm/openfilm/commit/c164fee480a36fa5f70885d80df1a404ce3b5764), [`a5b0917`](https://github.com/openfilm/openfilm/commit/a5b0917de6bb2fcb490bb65cb957d6c9eadf2c19), [`5c2000b`](https://github.com/openfilm/openfilm/commit/5c2000b8cd049074f7944e31b8d991d8dfc69bea), [`bd81148`](https://github.com/openfilm/openfilm/commit/bd811486aff50f0eeea33a8bc6e196a994bf8ded), [`893641d`](https://github.com/openfilm/openfilm/commit/893641de9e901f593b0dd4a75ac0dcb03cb8e3e8), [`4802dfd`](https://github.com/openfilm/openfilm/commit/4802dfdaa27ed30ff466978fe9bc7ac833ee4644), [`4934641`](https://github.com/openfilm/openfilm/commit/4934641f649d2f9dc992ecaceb62709485f8708a), [`c97b30d`](https://github.com/openfilm/openfilm/commit/c97b30d553d2210cb233eaeff2aea00fef0d3e18), [`6f8ce6e`](https://github.com/openfilm/openfilm/commit/6f8ce6e89c5cb1a5195ccba764565dedbb19b6a3), [`9018975`](https://github.com/openfilm/openfilm/commit/90189757998c75c68c4fa5c534dca363b8907768)]:
+  - openfilm@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
