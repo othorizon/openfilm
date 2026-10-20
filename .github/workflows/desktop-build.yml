@@ -1,0 +1,77 @@
+name: desktop-build
+
+# Installers for this fork, without the upstream update feed or release secrets.
+# Changing this workflow on the feature branch also starts its first build before
+# workflow_dispatch is available from the repository's default branch.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/oss-cloud-library]
+    paths: [.github/workflows/desktop-build.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: package (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-15
+            args: --unsigned --arch=arm64
+            out: arm64
+          - target: mac-x64
+            runner: macos-15-intel
+            args: --unsigned --arch=x64
+            out: x64
+          # release.mjs supports building NSIS on macOS, including PE resources.
+          - target: win-x64
+            runner: macos-15-intel
+            args: --platform=win --arch=x64
+            out: win-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build installer
+        run: pnpm --filter @openfilm/desktop release ${{ matrix.args }}
+      - name: Verify and describe artifacts
+        env:
+          OUT: apps/desktop/.release/${{ matrix.out }}/out
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p installers
+          if [ "$TARGET" = "win-x64" ]; then
+            cp "$OUT"/*.exe installers/
+          else
+            cp "$OUT"/*.dmg installers/
+            codesign --verify --deep --strict "$OUT"/mac*/OpenFilm.app
+          fi
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          {
+            echo "OpenFilm $VERSION ($TARGET)"
+            echo "Source commit: $GITHUB_SHA"
+            echo "This build has no publisher certificate or notarization."
+            echo "No upstream automatic update feed is enabled."
+          } > installers/BUILD.txt
+          (cd installers && find . -type f \( -name '*.dmg' -o -name '*.exe' \) -exec shasum -a 256 {} \; > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenFilm-${{ matrix.target }}-${{ github.run_number }}
+          path: installers/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
