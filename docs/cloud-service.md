@@ -8,6 +8,10 @@ Editing, packaging, restoring and rendering remain local.
 
 ## Run the service
 
+For deployments in mainland China, including Dokploy, use the separate
+[China deployment configuration](../deploy/cloud/cn/README.md). It provides mirrored
+Node/PostgreSQL images, Debian package sources and the npm/Corepack registry.
+
 Copy `deploy/cloud/env.example` to an operator-owned file outside the checkout, restrict
 its permissions to the operator, and replace the placeholders. Use a random hexadecimal
 `CLOUD_DATABASE_PASSWORD`. Configure the OSS bucket, region, HTTPS endpoint, dedicated

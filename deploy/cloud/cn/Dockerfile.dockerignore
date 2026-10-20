@@ -1,0 +1,12 @@
+# Send only the cloud service and dependency manifests to the builder.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/
+!apps/cloud/
+!apps/cloud/package.json
+!apps/cloud/src/
+!apps/cloud/src/**
+!apps/cloud/migrations/
+!apps/cloud/migrations/**

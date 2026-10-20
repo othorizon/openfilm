@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-m.daocloud.io/docker.io/library/postgres:17-bookworm}
+    environment:
+      POSTGRES_USER: openfilm
+      POSTGRES_DB: openfilm
+      POSTGRES_PASSWORD: ${CLOUD_DATABASE_PASSWORD:?Set CLOUD_DATABASE_PASSWORD in Dokploy Environment or your local env file}
+    volumes:
+      - cloud-postgres:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openfilm -d openfilm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  cloud:
+    build:
+      context: ../../..
+      dockerfile: deploy/cloud/cn/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-m.daocloud.io/docker.io/library/node:24-bookworm-slim}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian-security}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    environment:
+      DATABASE_URL: postgres://openfilm:${CLOUD_DATABASE_PASSWORD}@postgres:5432/openfilm
+      HOST: 0.0.0.0
+      PORT: 8080
+      OSS_BUCKET: ${OSS_BUCKET:-}
+      OSS_REGION: ${OSS_REGION:-}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-}
+      OSS_PREFIX: ${OSS_PREFIX:-}
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:-}
+      OSS_CNAME: ${OSS_CNAME:-false}
+      CLOUD_QUOTA_BYTES: ${CLOUD_QUOTA_BYTES:-10000000000}
+      CLOUD_FILE_BYTES: ${CLOUD_FILE_BYTES:-2000000000}
+      CLOUD_SNAPSHOT_BYTES: ${CLOUD_SNAPSHOT_BYTES:-5000000000}
+      CLOUD_PART_BYTES: ${CLOUD_PART_BYTES:-8388608}
+      CLOUD_UPLOAD_SECONDS: ${CLOUD_UPLOAD_SECONDS:-86400}
+      CLOUD_CLEANUP_SECONDS: ${CLOUD_CLEANUP_SECONDS:-300}
+    expose:
+      - "8080"
+    networks:
+      - default
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+networks:
+  default: {}
+volumes:
+  cloud-postgres:
