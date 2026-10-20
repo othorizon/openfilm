@@ -1,6 +1,5 @@
 import React from 'react';
 import { api, type CloudAccount } from '@/api';
-import { CloudLibrary } from '../CloudLibrary';
 import { useT } from '@/i18n';
 import { SettingsButton, SettingsField, SettingsGroup, SettingsItem, SettingsPage, settingsError } from './ui';
 
@@ -72,7 +71,7 @@ export function CloudSection() {
               <p className="text-sm text-[var(--text-muted)]">{t('cloudLibrary.passwordHint')}</p>
               <SettingsButton type="submit" disabled={busy}>{t('cloudLibrary.changePassword')}</SettingsButton>
             </form>
-            <CloudLibrary key={`${account.serviceUrl}:${account.user.id}`} />
+            <p className="text-[13px] text-[var(--text-muted)]">{t('mediaCloud.settingsHint')}</p>
           </> : null}
         </SettingsGroup>
       ) : account?.serviceUrl ? (

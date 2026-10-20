@@ -16,7 +16,6 @@
  */
 import React from 'react';
 import {
-  Cloud,
   ArrowUpDown,
   Bookmark,
   BookmarkPlus,
@@ -66,7 +65,6 @@ import {
   type MediaLink,
   type MediaProxy,
 } from '@/lib/workspace-resources';
-import { CloudLibraryDialog } from './CloudLibrary';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu';
 import { KIND_ICON, MediaPreview, useNearViewport } from './MediaPreview';
@@ -224,8 +222,6 @@ export function MediaPool({
   onAdd,
 }: MediaPoolProps) {
   const t = useT();
-  const [cloudOpen, setCloudOpen] = React.useState(false);
-  const closeCloud = React.useCallback(() => setCloudOpen(false), []);
   const [view, setView] = React.useState<ViewState>(() => loadView(projectId));
   /** The open folder, relative to assets/ ('' is All). */
   const [at, setAtState] = React.useState(() => OPEN_FOLDER.get(projectId) ?? '');
@@ -833,7 +829,6 @@ export function MediaPool({
         void importFiles([...e.dataTransfer.files]);
       }}
     >
-      {cloudOpen ? <CloudLibraryDialog projectId={projectId} onClose={closeCloud} /> : null}
       {/* the bar at the pane's width (lib/media-bar): the search field fills the room left; narrowing, Upload is its
           icon first, then the field shortens, then the search is a button that opens over the bar */}
       <div className={`relative flex shrink-0 items-center pb-1.5 pt-2.5 ${tight ? 'gap-0.5 px-2' : 'gap-1 px-2.5'}`}>
@@ -886,7 +881,6 @@ export function MediaPool({
         <BarButton label={t('media.sort')} onClick={(e) => barMenu(e, SORTS.map((key) => ({
           id: key, label: t(`media.sort_${key}`), checked: view.sort === key, onSelect: () => setView((v) => ({ ...v, sort: key })),
         })))}><ArrowUpDown size={14} /></BarButton>
-        <BarButton label={t('cloudLibrary.title')} onClick={() => setCloudOpen(true)}><Cloud size={14} /></BarButton>
         <BarButton label={t('assets.newFolder')} onClick={() => { setQuery(''); setView((v) => ({ ...v, filter: 'all' })); setCreating(true); }}><FolderPlus size={14} /></BarButton>
         {/* any kind of file: what Studio cannot play is still the project's material */}
         <input ref={inputRef} type="file" multiple className="hidden"

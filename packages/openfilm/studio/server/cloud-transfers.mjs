@@ -7,6 +7,7 @@ import { studioHome, projectById } from './projects.mjs';
 import { readable, importFile } from './files.mjs';
 import { packSnapshot, restoreSnapshot } from './cloud-snapshots.mjs';
 import { HttpError, json, readJson } from './http.mjs';
+import { cloudUploadName } from './cloud-upload-name.mjs';
 
 export async function hashes(path, signal) {
   const sha=createHash('sha256'), md5=createHash('md5'); let size=0;
@@ -146,6 +147,8 @@ export function createCloudTransfers(connection) {
     if(parts.length===2 && req.method==='GET')return json(res,200,{transfers:[...jobs.values()].filter(j=>same(j,conn)).map(visible).reverse()});
     const body=await readJson(req,65536);
     if(parts.length===2 && req.method==='POST') {
+      if ((body.accountId !== undefined && body.accountId !== conn.ownerId)
+        || (body.serviceUrl !== undefined && body.serviceUrl !== conn.serviceUrl)) throw new HttpError(409,'The cloud account changed. Select the media again.');
       if(!['upload','download'].includes(body.direction))throw new HttpError(400,'Choose upload or download.');
       let project;
       if (body.direction==='upload') project=await projectById(body.projectId);
@@ -161,7 +164,7 @@ export function createCloudTransfers(connection) {
         if(typeof body.path!=='string')throw new HttpError(400,'Choose a source file.');
         job.source=isAbsolute(body.path)?body.path:readable(project.path,body.path);
         if(!(await stat(job.source)).isFile())throw new HttpError(400,'Choose a regular file.');
-        job.name=basename(job.source);
+        job.name=cloudUploadName(basename(job.source),body.name);
         }
       } else {if(!safeId(body.itemId))throw new HttpError(400,'Choose cloud content.');job.itemId=body.itemId;}
       save(job);start(job,conn);return json(res,202,{transfer:visible(job)});

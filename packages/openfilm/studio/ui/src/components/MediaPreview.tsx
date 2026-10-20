@@ -75,7 +75,7 @@ export function MediaPreview({
   /* asked for in turn with Studio's other media (lib/media-queue), once the tile is near the screen */
   const shown = useMediaImage(thumbable ? picture : null, near);
 
-  if (file.kind === 'audio') return <AudioPreview file={file} sources={sources} />;
+  if (file.kind === 'audio' && !file.cloud) return <AudioPreview file={file} sources={sources} />;
 
   const Icon = KIND_ICON[file.kind] ?? FileIcon;
   const IMG = 'absolute inset-0 h-full w-full min-w-0 object-contain';

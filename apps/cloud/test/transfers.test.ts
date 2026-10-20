@@ -31,19 +31,24 @@ test('local Studio uploads direct to OSS and imports complete verified downloads
   const f=await fixture();
   try {
     const bytes=Buffer.alloc(230000,'x'); await writeFile(join(f.project.path,'source.png'),bytes);
-    const body={direction:'upload',kind:'asset',projectId:f.project.id,path:'source.png',confirmed:true};
+    const body={direction:'upload',kind:'asset',projectId:f.project.id,path:'source.png',name:'Renamed clip',tags:['travel','北京'],confirmed:true};
     assert.equal((await f.api('cloud/transfers',{...body,confirmed:false})).status,400);
     const response=await f.api('cloud/transfers',body);
     assert.equal(response.status,202,await response.clone().text());
     const uploaded=await f.finish((await response.json()).transfer.id);
     assert.ok(uploaded.item.id);
+    assert.equal(uploaded.item.name,'Renamed clip.png');
+    assert.deepEqual(uploaded.item.tags,['travel','北京']);
+    assert.equal(uploaded.item.visibility,'private');
+    assert.equal((await f.api('cloud/transfers',{...body,accountId:'another-account'})).status,409);
+    assert.equal((await f.api('cloud/transfers',{...body,serviceUrl:'https://other.example.com'})).status,409);
     const get=async()=>{
       const response=await f.api('cloud/transfers',{direction:'download',itemId:uploaded.item.id,projectId:f.project.id});
       assert.equal(response.status,202,await response.clone().text());
       return f.finish((await response.json()).transfer.id);
     };
     const downloaded=await get();
-    assert.equal(downloaded.result.path,'assets/source.png');
+    assert.equal(downloaded.result.path,'assets/Renamed clip.png');
     assert.deepEqual(await readFile(join(f.project.path,downloaded.result.path)),bytes);
     assert.equal((await get()).result.reused,true);
     assert.ok(f.oss.evidence.puts>=3);

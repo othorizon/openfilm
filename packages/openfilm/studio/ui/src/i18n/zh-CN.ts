@@ -6,6 +6,7 @@ const FILES = typeof navigator !== 'undefined' && /^win/i.test(navigator.platfor
   : typeof navigator !== 'undefined' && /^mac/i.test(navigator.platform) ? '访达' : '文件管理器';
 
 export const zhCN: Words = {
+  mediaCloud: {"library": "素材库", "local": "本地素材", "shared": "云端共享", "mine": "我的云空间", "contents": "云端内容", "uploadTitle": "上传到我的云空间", "privateHint": "素材默认仅自己可见。上传后可在素材菜单中公开分享。", "name": "素材名称", "tags": "标签", "tagsHint": "多个标签用逗号分隔", "queued": "已加入队列", "uploading": "正在准备上传…", "loading": "正在加载云素材…", "dropHint": "拖入文件上传 · 双击或拖拽素材到时间线使用", "dropUpload": "松开后配置素材名称和标签", "add": "添加到时间线", "actions": "素材操作", "accountChanged": "云账户已切换，请重新选择素材。", "importFailed": "无法读取此文件，请重新选择。", "settingsHint": "在项目素材库中切换到“云端共享”或“我的云空间”，浏览和管理云素材。"},
   cloudLibrary: {
     available: '可用空间',
     title: '云素材库', mine: '我的素材', public: '公开素材', snapshot: '草稿快照', result: '剪辑结果', transfers: '传输任务',

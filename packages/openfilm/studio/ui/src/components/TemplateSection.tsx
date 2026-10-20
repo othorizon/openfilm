@@ -165,7 +165,7 @@ function PictureInput({ src, host, label, onPick, t }: {
         onDrop={(e) => {
           setOver(false);
           const file = readResourceDragData(e.dataTransfer);
-          if (!file || file.saved || !PICTURE.test(file.path)) return;
+          if (!file || file.saved || file.cloud || !PICTURE.test(file.path)) return;
           e.preventDefault();
           onPick(file.path);
         }}

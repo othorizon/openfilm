@@ -13,6 +13,8 @@
 export const RESOURCE_DRAG_TYPE = 'application/x-openfilm-resource';
 
 export type ResourceKind = 'video' | 'image' | 'audio' | 'mg' | 'other';
+/** A cloud reference is resolved to a local file before any timeline edit. No signed URL travels in drag data. */
+export interface CloudResourceRef { id: string; accountId: string; serviceUrl: string }
 
 /** The payload: a project file as the media pane lists it, serialized as JSON under RESOURCE_DRAG_TYPE. */
 export interface ResourceDragItem {
@@ -36,6 +38,7 @@ export interface ResourceDragItem {
   fps?: number;
   /** A saved thing (lib/saved), not a file of the project: its files are brought in as it lands. */
   saved?: string;
+  cloud?: CloudResourceRef;
 }
 
 const KINDS: readonly ResourceKind[] = ['video', 'image', 'audio', 'mg', 'other'];
@@ -90,6 +93,9 @@ function normalizeResourceDragItem(value: unknown): ResourceDragItem | null {
   const w = num(item.w);
   const h = num(item.h);
   const fps = num(item.fps);
+  const cloud = item.cloud;
+  if (cloud && (typeof cloud !== 'object' || !/^[a-f0-9-]{36}$/i.test(cloud.id)
+    || typeof cloud.accountId !== 'string' || !cloud.accountId || typeof cloud.serviceUrl !== 'string' || !cloud.serviceUrl)) return null;
   return {
     path: item.path,
     name: typeof item.name === 'string' && item.name ? item.name : item.path.slice(item.path.lastIndexOf('/') + 1),
@@ -104,6 +110,7 @@ function normalizeResourceDragItem(value: unknown): ResourceDragItem | null {
     ...(h === undefined ? {} : { h }),
     ...(fps === undefined ? {} : { fps }),
     ...(typeof item.saved === 'string' && item.saved ? { saved: item.saved } : {}),
+    ...(cloud ? { cloud: { id: cloud.id, accountId: cloud.accountId, serviceUrl: cloud.serviceUrl } } : {}),
   };
 }
 

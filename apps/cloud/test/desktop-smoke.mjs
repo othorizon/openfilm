@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { testDatabase } from './database.ts';
@@ -24,7 +24,7 @@ const child = spawn(require('electron'), [DESKTOP, '--no-sandbox', ...(process.p
 });
 let logs = '';
 child.stderr.on('data', chunk => { logs += chunk; });
-let browser;
+let browser, pageForFailure;
 try {
   await waitForCdp('http://127.0.0.1:19327');
   const devtools = await (await fetch('http://127.0.0.1:19327/json/version')).json();
@@ -48,9 +48,10 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.match(page.url(), /\/projects\//);
-  page.setDefaultTimeout(10_000);
+  page.setDefaultTimeout(15_000);
+  pageForFailure = page;
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Cloud account', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cloud account', exact: true }).click();
   await page.getByLabel('Service URL', { exact: true }).fill(cloud.origin);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Create an account', exact: true }).click();
@@ -71,31 +72,74 @@ try {
   const image=join(scratch,'desktop.png');
   await writeFile(image,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=','base64'));
   const projectId=new URL(page.url()).pathname.split('/')[2];
-  await page.getByLabel('Local project',{exact:true}).selectOption(projectId);
-  await page.getByLabel('File path (absolute or project-relative)',{exact:true}).fill(image);
-  await page.getByRole('button',{name:'Upload file',exact:true}).click();
-  await page.getByRole('dialog',{name:'Upload to your cloud space?',exact:true}).getByRole('button').last().click();
-  await page.getByText('Completed',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'My assets',exact:true}).click();
-  await page.getByRole('heading',{name:'desktop.png',exact:true}).waitFor();
-  await page.getByRole('button',{name:'Preview',exact:true}).click();
-  await page.getByAltText('desktop.png',{exact:true}).waitFor();
-  assert.ok(await page.getByAltText('desktop.png',{exact:true}).evaluate(image=>image.complete&&image.naturalWidth===1));
-  await page.getByRole('button',{name:'Make public',exact:true}).click();
-  await page.getByRole('dialog',{name:'Share this media with all signed-in users?',exact:true}).getByRole('button').last().click();
-  await page.getByRole('button',{name:'Make private',exact:true}).waitFor();
-  await page.getByRole('button',{name:'Download into project',exact:true}).click();
-  await page.waitForFunction(()=>[...document.querySelectorAll('span')].filter(el=>el.textContent==='Completed').length>=2);
-  await page.getByText('assets/desktop.png',{exact:true}).waitFor();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Assets', exact: true }).click();
+  await page.getByRole('tab', { name: 'My cloud', exact: true }).click();
+  const pool = page.getByRole('tabpanel', { name: 'My cloud', exact: true });
+  await pool.getByText('desktop-user', { exact: true }).waitFor();
+  // A real File drop exercises the browser fallback as well as the confirmation dialog.
+  const payload = await page.evaluateHandle(base64 => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], 'desktop.png', { type: 'image/png' }));
+    return transfer;
+  }, (await readFile(image)).toString('base64'));
+  await pool.locator('section').dispatchEvent('drop', { dataTransfer: payload });
+  const dialog = page.getByRole('dialog', { name: 'Upload to my cloud', exact: true });
+  await dialog.getByLabel('Media name', { exact: true }).fill('Cloud sunset');
+  await dialog.getByLabel('Tags', { exact: true }).fill('travel, 北京');
+  assert.equal(await pool.locator('[data-cloud-item]').count(), 0, 'dropping files asks for confirmation before upload');
+  assert.equal(oss.evidence.puts, 0, 'no bytes reach OSS before confirmation');
+  await dialog.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await pool.getByText('Completed', { exact: true }).waitFor();
+  await pool.getByRole('button', { name: 'Transfers', exact: true }).click();
+  const tile = pool.locator('[data-cloud-item]').filter({ hasText: 'Cloud sunset.png' });
+  await tile.waitFor();
+  assert.match(await tile.innerText(), /travel.*北京/);
+  assert.match(await tile.innerText(), /Private/);
+  await tile.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('img[alt="Cloud sunset.png"]')].filter(img => img.complete && img.naturalWidth === 1).length >= 2);
+  await tile.getByRole('button', { name: 'Media actions: Cloud sunset.png', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Make public', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Share this media with all signed-in users?', exact: true }).getByRole('button').last().click();
+  await page.getByRole('tab', { name: 'Shared cloud', exact: true }).click();
+  const shared = page.getByRole('tabpanel', { name: 'Shared cloud', exact: true }).locator('[data-cloud-item]').filter({ hasText: 'Cloud sunset.png' });
+  await shared.waitFor();
+  // Use the actual resource drag payload and the timeline's drop handlers.
+  const drag = await page.evaluateHandle(() => new DataTransfer());
+  await shared.dispatchEvent('dragstart', { dataTransfer: drag });
+  const target = page.locator('[data-timeline-empty]');
+  const rect = await target.boundingBox();
+  assert.ok(rect);
+  const point = { clientX: rect.x + 70, clientY: rect.y + 35, dataTransfer: drag };
+  await target.dispatchEvent('dragover', point);
+  await page.locator('[data-timeline] .tl-scroll').dispatchEvent('drop', point);
+  await shared.dispatchEvent('dragend', { dataTransfer: drag });
+  await page.locator('[data-block-id]').first().waitFor();
+  const projects = await page.evaluate(async () => (await fetch('/api/projects')).json());
+  const project = projects.projects.find(project => project.id === projectId);
+  const film = await readFile(join(project.path, 'film.html'), 'utf8');
+  assert.match(film, /assets\/Cloud sunset\.png/);
+  assert.ok(!film.includes('Signature=') && !film.includes('cloud/'), 'timeline persists only a local media path');
+  await page.getByRole('tab', { name: 'Local media', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'Local media', exact: true }).getByText('Cloud sunset.png', { exact: true }).first().waitFor();
+  await page.getByRole('tab', { name: 'My cloud', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'My cloud', exact: true }).locator('[data-cloud-item]').waitFor();
   if (process.env.OPENFILM_TEST_ARTIFACTS) {
     await mkdir(process.env.OPENFILM_TEST_ARTIFACTS, { recursive: true });
     await page.screenshot({ path: join(process.env.OPENFILM_TEST_ARTIFACTS, 'cloud-library.png') });
   }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cloud account', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByLabel('Password', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'My cloud', exact: true }).getByRole('button', { name: 'Cloud account', exact: true }).waitFor();
   assert.equal(await page.getByText('desktop-user', { exact: true }).count(), 0);
+  assert.equal(await page.locator('[data-cloud-item]').count(), 0);
   console.log('Desktop acceptance passed: accounts, media selection, confirmed direct upload, preview, sharing, local import and transfer progress.');
 } catch (error) {
+  if (pageForFailure && process.env.OPENFILM_TEST_ARTIFACTS) { await mkdir(process.env.OPENFILM_TEST_ARTIFACTS, { recursive: true }); await pageForFailure.screenshot({ path: join(process.env.OPENFILM_TEST_ARTIFACTS, 'failure.png') }).catch(() => {}); }
   console.error(logs.slice(-4000));
   throw error;
 } finally {

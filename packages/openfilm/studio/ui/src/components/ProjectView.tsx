@@ -7,6 +7,9 @@
  * are written one at a time (see editor/use-film.ts); the agent's writes come in through the folder's events.
  */
 import * as React from 'react';
+import { MediaLibrary } from './MediaLibrary';
+import { importCloudMedia } from '@/lib/cloud-media';
+
 import { BookmarkPlus, ClipboardCopy, ClipboardPaste, GalleryVerticalEnd, Layers, LibraryBig, MessageSquarePlus, MonitorDown, Settings2, TriangleAlert } from 'lucide-react';
 import { applyOps } from '../../../server/ops.mjs';
 import { api, ApiError, PREFS_EVENT, projectEvents, type Clip, type Film, type Listing, type Op, type ProjectFilm, type ProjectSettings } from '@/api';
@@ -303,9 +306,9 @@ export function ProjectView({ projectId, onProject, onLeave }: {
   const mediaSources = React.useMemo<MediaSources>(() => {
     const media = (what: string, path: string, mtime: number | string) => `/api/projects/${encodeURIComponent(projectId)}/media?what=${what}&path=${encodeURIComponent(path)}&v=${mtime}`;
     return {
-      file: (f) => `${folder}${f.path.split('/').map(encodeURIComponent).join('/')}?v=${Math.round(f.mtimeMs)}`,
-      poster: (f) => (f.kind === 'video' ? media('poster', f.path, Math.round(f.mtimeMs)) : undefined),
-      wave: (f) => media('wave', f.path, Math.round(f.mtimeMs)),
+      file: (f) => f.cloudPreviewUrl ?? `${folder}${f.path.split('/').map(encodeURIComponent).join('/')}?v=${Math.round(f.mtimeMs)}`,
+      poster: (f) => (!f.cloud && f.kind === 'video' ? media('poster', f.path, Math.round(f.mtimeMs)) : undefined),
+      wave: (f) => f.cloud ? '' : media('wave', f.path, Math.round(f.mtimeMs)),
       pagePoster: (f) => media('poster', f.path, `${Math.round(f.mtimeMs)}.${filesTick}`),
       pageSurface: (f) => `${folder}${f.path.split('/').map(encodeURIComponent).join('/')}`,
     };
@@ -972,7 +975,18 @@ export function ProjectView({ projectId, onProject, onLeave }: {
     if (!mode || !onTracks.length) return [];
     return planRoom(editModel(), onTracks, { mode, ...followOf(readTimelinePrefs()) }).ops;
   }, [editModel]);
+  const cloudImportLifetime = React.useRef(new AbortController());
+  React.useEffect(() => {
+    const controller = new AbortController(); cloudImportLifetime.current = controller;
+    return () => controller.abort();
+  }, [projectId]);
   const dropAsset = React.useCallback(async (file: ResourceDragItem, target: AssetDropTarget, atMs: number): Promise<string | null> => {
+    if (file.cloud) {
+      try {
+        const local = await importCloudMedia(projectId, file, cloudImportLifetime.current.signal);
+        return dropAssetRef.current(local, target, atMs);
+      } catch (e) { return e instanceof Error ? e.message : String(e); }
+    }
     const plan = assetDropInsert(file, timelineTracks, target, atMs, stageRef.current);
     if ('error' in plan) return plan.error === 'locked' ? t('timeline.trackLocked') : t('timeline.dropNotClip');
     /* a thing of Saved (lib/saved): brought into the project first (a file imported, a bundle's files copied in), then
@@ -1012,6 +1026,10 @@ export function ProjectView({ projectId, onProject, onLeave }: {
    * `,` and `.` (insert or overwrite the part marked, at the playhead; the playhead then goes to its end, as Premiere's).
    */
   const addMedia = React.useCallback(async (file: WorkspaceResource, how: { mode?: EditMode; range?: SourceRange | null; atPlayhead?: boolean } = {}) => {
+    if (file.cloud) {
+      try { file = await importCloudMedia(projectId, file, cloudImportLifetime.current.signal); }
+      catch (e) { if (!cloudImportLifetime.current.signal.aborted) toast.showError(e instanceof Error ? e.message : String(e)); return; }
+    }
     const prefs = readTimelinePrefs();
     const target = timelineCommands.current?.target() ?? null;
     const at = how.atPlayhead || target != null ? snapToFrame(timeRef.current) : 'end';
@@ -1025,7 +1043,7 @@ export function ProjectView({ projectId, onProject, onLeave }: {
       if (end <= player.current.duration * 1000 + 1) seek(end);
       else seekWhenLonger.current = end;
     }
-  }, [editModel, edit, pause, seek, t, toast]);
+  }, [projectId, editModel, edit, pause, seek, t, toast]);
   /*
    * A thing of Saved put on the timeline without a drag (its "+", Enter, the source viewer's `,` and `.`): brought into
    * the project first, then as a file of the project goes (`how`), or a clip as it was saved, at the playhead on the
@@ -1198,7 +1216,10 @@ export function ProjectView({ projectId, onProject, onLeave }: {
     if (paths.length && paths.every(Boolean)) return savedActions.bring(paths, into);
     return savedActions.upload(files, into, onProgress, t('assets.uploadFailed'));
   }, [t]);
-  const mediaPool = () => (mediaScope === 'saved' ? (
+  const mediaPool = () => (<MediaLibrary projectId={projectId} onImport={onImport} onPick={onPick}
+    selectedPath={pickedMedia?.path} reveal={revealMedia?.seq} onSelect={pickMedia}
+    onAdd={(file) => void addMedia(file)} onSettings={() => setSettingsOpen('cloud')}>
+    {mediaScope === 'saved' ? (
     <MediaPool
       key="saved"
       projectId={SAVED}
@@ -1247,7 +1268,7 @@ export function ProjectView({ projectId, onProject, onLeave }: {
       litPath={chatPoint?.file ?? null}
       onAdd={(file) => void addMedia(file)}
     />
-  ));
+  )}</MediaLibrary>);
   /* the range marked on the timeline (⇧-drag on the ruler, I and O): Studio's, told to the app with the selection */
   const [markedRange, setMarkedRange] = React.useState<FilmRange | null>(null);
   rangeNowRef.current = markedRange;
@@ -2970,6 +2991,12 @@ export function ProjectView({ projectId, onProject, onLeave }: {
                     waveUrl={waveUrl}
                     history={timelineHistory}
                     {...tools.timeline}
+                    onReplaceDrop={(block, file) => {
+                      if (!file.cloud) { tools.timeline.onReplaceDrop(block, file); return; }
+                      void importCloudMedia(projectId, file, cloudImportLifetime.current.signal)
+                        .then(local => tools.timeline.onReplaceDrop(block, local))
+                        .catch(e => { if (!cloudImportLifetime.current.signal.aborted) toast.showError(e.message); });
+                    }}
                   />
                 </div>
                 {/* the audio meters, beside the timeline as Premiere's */}

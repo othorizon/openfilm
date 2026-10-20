@@ -8,11 +8,15 @@
  */
 import { clipKind } from '../../../../src/film-doc.mjs';
 import { mediaFetch } from './media-queue.ts';
+import type { CloudResourceRef } from './resource-drag.ts';
 
 export type WorkspaceResourceKind = 'video' | 'image' | 'audio' | 'mg' | 'other';
 
 /** One file of the project: a media file under assets/, or a web page (`kind: 'mg'`, one of the film's scenes). */
 export interface WorkspaceResource {
+  cloud?: CloudResourceRef;
+  /** Ephemeral preview only; never written to a project or a drag payload. */
+  cloudPreviewUrl?: string;
   /** Project-relative path (`assets/clips/a.mp4`, `scenes/intro.html`): what clips name in film.html. */
   path: string;
   /** What the pane calls it: the file name, or a scene's name (see `pageName`). */

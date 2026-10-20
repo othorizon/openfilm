@@ -177,7 +177,7 @@ function MediaPreviewPane({ file, sources, onClose, onPlace }: SourcePreviewProp
   const timed = file.kind === 'video' || file.kind === 'audio';
   const src = sources.file(file);
 
-  React.useEffect(() => { setPlaying(false); setTime(0); setFailed(false); setDuration((file.durationMs ?? 0) / 1000); }, [file.path, file.durationMs]);
+  React.useEffect(() => { setPlaying(false); setTime(0); setFailed(false); setDuration((file.durationMs ?? 0) / 1000); }, [file.path, file.durationMs, src]);
   /* a still has no part to mark: `,` and `.` put it whole */
   const marks = useSourceKeys(file.path, timed ? time : 0, timed ? duration : 0, onPlace);
 
