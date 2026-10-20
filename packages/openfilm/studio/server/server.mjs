@@ -49,6 +49,7 @@ import { SavedError, bundlePoster, libraryPath, libraryRel, libraryRoot as saved
 import { FILM_FILE, clipKind, isPage } from '../../src/film-doc.mjs';
 import { listSkills, skillOrigins } from '../../src/skills.mjs';
 import { providersRoute } from './providers/index.mjs';
+import { createCloudAccount } from './cloud.mjs';
 import { captionRoutes } from './captions.mjs';
 import { projectSettingsRoute } from './project-settings.mjs';
 import { markersRoute } from './markers.mjs';
@@ -102,6 +103,7 @@ export async function startStudio({ port = 4747, key, openBrowser = systemBrowse
   const cookieKey = (/** @type {Req} */ req) => (sameKey(cookie(req, COOKIE)) ? cookie(req, COOKIE) : cookie(req, FRAMED));
   key ??= advertise ? studioKey() : randomBytes(24).toString('hex');
   const watchers = createWatchers();
+  const cloudRoute = createCloudAccount();
   /** questions about spending for the person, in the pages showing a project (see get.mjs) */
   const asks = createAsks({ emit: (root, event) => watchers.emit(root, event), roots: watchers.roots });
   /** the editor pages open right now, and whether each is in sight: `/open` switches them to a project */
@@ -192,6 +194,7 @@ export async function startStudio({ port = 4747, key, openBrowser = systemBrowse
 
     authorize(req);
     const parts = path.slice('/api/'.length).split('/').map(decodeURIComponent);
+    if (parts[0] === 'cloud') return cloudRoute(req, res, parts);
 
     /* stop: another app is taking over this machine's Studio, or `openfilm open` starts it afresh (`whenIdle`: not
        while an export runs or media is made — it would be lost). `pages`: how many were open, to come back */

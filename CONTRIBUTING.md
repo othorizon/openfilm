@@ -32,6 +32,10 @@ From the root:
 `pnpm --filter <package> <script>` runs one package's script; the packages are `openfilm`, `@openfilm/shared` and
 `@openfilm/desktop`.
 
+`@openfilm/cloud` is the optional account service. Its integration tests use a
+disposable PostgreSQL database; see [Cloud accounts](docs/cloud-service.md) for
+Docker Compose, local development and the actual desktop acceptance command.
+
 ## Layout
 
 ```

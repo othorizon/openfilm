@@ -84,7 +84,21 @@ export interface StudioLocations { projects: StudioLocation }
 /** Said on the window when they change, for what plays by them (the preview's proxies). */
 export const PREFS_EVENT = 'openfilm:prefs';
 
+export interface CloudAccount {
+  serviceUrl: string | null;
+  user: { id: string; username: string } | null;
+  space: { ownerId: string; quotaBytes: number; usedBytes: number; reservedBytes: number } | null;
+  offline: boolean;
+  hasSession: boolean;
+  notice?: string;
+}
+
 export const api = {
+  cloud: () => call<CloudAccount>('cloud'),
+  configureCloud: (serviceUrl: string) => call<CloudAccount>('cloud/configure', { method: 'POST', json: { serviceUrl } }),
+  cloudSignIn: (action: 'login' | 'register', username: string, password: string) =>
+    call<CloudAccount>(`cloud/${action}`, { method: 'POST', json: { username, password } }),
+  cloudSignOut: () => call<CloudAccount>('cloud/logout', { method: 'POST', json: {} }),
   /** this Studio's version and the latest openfilm on npm; `check`: ask npm now */
   version: (check = false) => call<StudioVersion>(`version${check ? '?check=1' : ''}`),
   /** the newest openfilm, run in the background (`openfilm update`): Studio starts again on it; refused (ApiError, `body.code`) while busy */

@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, Settings2, Keyboard, Sun, Moon, Monitor, Plug, Boxes, Bot, Search, SquareTerminal, Loader2 } from 'lucide-react';
+import { X, Settings2, Keyboard, Sun, Moon, Monitor, Plug, Boxes, Bot, Search, SquareTerminal, Loader2, Cloud } from 'lucide-react';
 import { LANGUAGES, phrasesUnder, useLanguage, useLanguageChoice, useT, type LanguageChoice } from '@/i18n';
 import { shortcutHint } from '@/lib/shortcut-hint';
 import { SHORTCUTS, type ShortcutKey } from '@/lib/timeline-keys';
@@ -23,13 +23,14 @@ import { SettingsSelect } from './SettingsSelect';
 import { SettingsButton, SettingsGroup, SettingsItem, SettingsPage, SettingsSegmented, SettingsSwitch } from './ui';
 import { useThemeMode, type ThemeMode } from './theme';
 import { StorageGroup } from './StorageGroup';
+import { CloudSection } from './CloudSection';
 
-export type SettingsSection = 'general' | 'agents' | 'providers' | 'models' | 'developer' | 'shortcuts';
+export type SettingsSection = 'general' | 'cloud' | 'agents' | 'providers' | 'models' | 'developer' | 'shortcuts';
 
 /* the nav, in groups: what OpenFilm does, then help (Agents and Developer only inside an app with a chat:
    lib/host.ts `agents`, `developer`) */
 const NAV: Array<{ group: 'settings' | 'help'; sections: SettingsSection[] }> = [
-  { group: 'settings', sections: ['general', ...(studioHost?.agents ? ['agents' as const] : []), 'providers', 'models'] },
+  { group: 'settings', sections: ['general', 'cloud', ...(studioHost?.agents ? ['agents' as const] : []), 'providers', 'models'] },
   { group: 'help', sections: ['shortcuts', ...(studioHost?.developer ? ['developer' as const] : [])] },
 ];
 
@@ -42,6 +43,7 @@ const LINKS = [
 
 const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   general: <Settings2 size={18} strokeWidth={1.75} />,
+  cloud: <Cloud size={18} strokeWidth={1.75} />,
   agents: <Bot size={18} strokeWidth={1.75} />,
   providers: <Plug size={18} strokeWidth={1.75} />,
   models: <Boxes size={18} strokeWidth={1.75} />,
@@ -52,6 +54,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
 /** what a search through each section reads: its name and every phrase it shows */
 const SECTION_WORDS: Record<SettingsSection, string | string[]> = {
   general: ['settings.appearance', 'settings.storage', 'settings.playback'],
+  cloud: 'settings.cloud',
   agents: 'settings.agents',
   providers: 'settings.providers',
   models: 'settings.models',
@@ -185,6 +188,7 @@ export function SettingsModal({ open, onClose, section: opening }: SettingsModal
           <div key={showing ?? 'none'} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-10 pb-12 pt-9">
             {showing ? <h2 id="settings-title" className="mb-7 text-[22px] font-semibold tracking-[-0.015em] text-[var(--text)]">{t(`settings.sections.${showing}`)}</h2> : null}
             {showing === 'general' && <GeneralSection />}
+            {showing === 'cloud' && <CloudSection />}
             {showing === 'agents' && <AgentsSection />}
             {showing === 'providers' && <ProvidersSection />}
             {showing === 'models' && <ModelsSection onConnect={() => { setQuery(''); setSection('providers'); }} />}

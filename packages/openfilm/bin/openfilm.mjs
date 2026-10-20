@@ -8,6 +8,7 @@ const USAGE = `openfilm — a film is a function of time: given t, it draws that
   openfilm render  [a-b]               the MP4, saved beside film.html
   openfilm get     [what] [--options]  voice-over, music, sound effects, transcripts, images, video, from a connected service
   openfilm skills                      the skills this film can be made with; \`openfilm skill <name>\` prints one
+  openfilm cloud   <command>           cloud account, login and personal space; cloud --help for options
   openfilm update                      the newest OpenFilm; Studio starts again on it
 
   Run with no arguments for the manual; \`openfilm <command> --help\` for one command's options; --version for the version.
@@ -103,6 +104,9 @@ if (RAW.length === 1 && (RAW[0] === '--version' || RAW[0] === '-v')) {
   process.exit(0);
 }
 if (RAW[0] !== 'update') await updateNotice(RAW[0] === 'open');
+if (RAW[0] === 'cloud') {
+  process.exit(await (await import('../src/cloud-cli.mjs')).cloudCommand(RAW.slice(1)));
+}
 if (RAW[0] === 'get') {
   let result;
   try { result = await (await import('../studio/client.mjs')).getMedia(RAW.slice(1), (line) => console.error(line)); }
