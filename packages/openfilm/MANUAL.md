@@ -83,3 +83,30 @@ Run them in the film's folder. Each one's `--help` lists its options:
 The words of a sound or a video are a WebVTT beside it with the same name (`vo/1.wav` → `vo/1.vtt`): a cue per subtitle line, a timestamp tag at each word. Studio makes the film's subtitles from them; never draw subtitles in a page.
 
 Media can come from `get`, any service the person uses (with its API docs and their key), or your own code. Save it under `assets/`.
+
+## Cloud library
+
+`openfilm cloud --help` lists the optional cloud commands. The desktop and CLI use the
+same account configured in Settings → Cloud account. Local editing and exports do not
+need a cloud login. Never ask for or put cloud session tokens or OSS keys in a film.
+
+Use `openfilm cloud list --scope public --q forest --type video` to search shared media,
+`openfilm cloud preview <item-id>` for a three-hour preview URL, and
+`openfilm cloud download <item-id> --project <project-id>` to import it. Transfers return
+an ID; `openfilm cloud wait <transfer-id>` returns the completed result, including its
+project-relative path. Use that local path in clips. Downloads are independent copies.
+`transfers`, `pause`, `resume` and `cancel` expose progress and recovery. Resume requires
+the original service and account, and an unchanged upload source.
+
+Uploads, publication and deletion require explicit authorization in the person's task.
+Once authorized, pass `--yes`; do not ask again within that task. `upload <file> --project
+<id> --yes` creates a private media asset. Add `--kind result` to store an existing export.
+`publish <item-id> --yes` shares an asset; `share <result-id> --yes` shares a media result
+as an asset. `withdraw` stops new public access; `delete <item-id> --yes` permanently
+removes the cloud entry. Already issued URLs may work for their remaining three-hour
+window. Local copies remain usable.
+
+`snapshot <project-id> --yes` saves a separate portable draft version, including approved
+linked media and editor state, excluding conversations, history, caches and credentials.
+`download <snapshot-id>` restores a new local project; it never overwrites an existing
+one. A snapshot fails if a required file is missing or an external link is not authorized.

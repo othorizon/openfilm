@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { studioHome } from './projects.mjs';
+import { createCloudTransfers } from './cloud-transfers.mjs';
 import { HttpError, json, readJson } from './http.mjs';
 
 /** @typedef {{ serviceUrl: string | null, token?: string }} Account */
@@ -28,19 +29,21 @@ export function createCloudAccount() {
     state = { serviceUrl: serviceUrl(raw.serviceUrl),
       ...(typeof raw.token === 'string' && /^[a-f0-9]{64}$/.test(raw.token) ? { token: raw.token } : {}) };
   } catch { /* First use, or an invalid saved account: stay signed out. */ }
+  const transfers = createCloudTransfers(connection);
   function save(/** @type {Account} */ next) {
     mkdirSync(home, { recursive: true });
     const tmp = `${file}.${randomUUID()}.tmp`;
     writeFileSync(tmp, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
     renameSync(tmp, file);
     state = next;
+    void transfers.stopAll();
   }
   async function request(/** @type {Account} */ current, /** @type {string} */ path, /** @type {unknown} */ body = undefined) {
     if (!current.serviceUrl) throw new HttpError(400, 'Configure your cloud service first.');
     let response;
     try {
       response = await fetch(`${current.serviceUrl}/v1/${path}`, {
-        method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(4000),
+        method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
         headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(current.token ? { authorization: `Bearer ${current.token}` } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -53,6 +56,14 @@ export function createCloudAccount() {
     }
     if (!result || typeof result !== 'object') throw new HttpError(502, 'The cloud service returned an invalid response.');
     return result;
+  }
+  async function connection() {
+    const current=state;
+    if(!current.token)throw new HttpError(403,'Sign in to your cloud account.');
+    const user=await request(current,'me');
+    const assertCurrent=()=>{if(current!==state)throw new HttpError(403,'Cloud account changed. Resume after signing in to the original account.');};
+    assertCurrent();
+    return {serviceUrl:current.serviceUrl,ownerId:user.id,assertCurrent,async request(/** @type {string} */ path,/** @type {unknown} */ body=undefined){assertCurrent();const result=await request(current,path,body);assertCurrent();return result;}};
   }
   async function status() {
     const current = state;
@@ -90,7 +101,8 @@ export function createCloudAccount() {
     return result;
   }
   /** @param {import('./http.mjs').Req} req @param {import('./http.mjs').Res} res @param {string[]} parts */
-  return async function cloudRoute(req, res, parts) {
+  async function cloudRoute(req, res, parts) {
+    if (['items','transfers'].includes(parts[1])) return transfers.route(req,res,parts);
     if (parts.length === 1 && req.method === 'GET') return json(res, 200, await status());
     if (parts.length !== 2 || req.method !== 'POST') throw new HttpError(404, 'Cloud operation not found.');
     const body = await readJson(req, 4096);
@@ -104,6 +116,10 @@ export function createCloudAccount() {
           save({ serviceUrl: next });
         }
         return json(res, 200, { ...await status(), ...(notice ? { notice } : {}) });
+      }
+      if (action === 'password') {
+        await request(state,'auth/password',{oldPassword:body?.oldPassword,newPassword:body?.newPassword});
+        save({serviceUrl:state.serviceUrl});return json(res,200,await status());
       }
       if (action === 'logout') {
         const notice = await signOut();
@@ -122,5 +138,7 @@ export function createCloudAccount() {
       }
       throw new HttpError(404, 'Cloud operation not found.');
     });
-  };
+  }
+  cloudRoute.close=()=>transfers.close();
+  return cloudRoute;
 }

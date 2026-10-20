@@ -1,58 +1,32 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { randomBytes, randomUUID, scrypt, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { HttpError, json, readJson } from './http.ts';
+import { passwordHash, matches, validPassword } from './password.ts';
 import pg from 'pg';
 import { migrate } from './database.ts';
-
-class HttpError extends Error {
-  status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
-}
+import { createLibrary, defaultLimits, type Limits } from './library.ts';
+import { storageFromEnv, type StorageConfig } from './storage.ts';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
-const derive = (password: string, salt: string) => new Promise<Buffer>((resolve, reject) => {
-  scrypt(password, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
-    (error, key) => error ? reject(error) : resolve(key));
-});
-async function passwordHash(password: string) {
-  const salt = randomBytes(16).toString('hex');
-  return `scrypt-v1:${salt}:${(await derive(password, salt)).toString('hex')}`;
-}
-async function matches(password: string, hash: string) {
-  const [version, salt, expected] = hash.split(':');
-  if (version !== 'scrypt-v1' || !salt || !expected) return false;
-  const actual = await derive(password, salt);
-  const bytes = Buffer.from(expected, 'hex');
-  return actual.length === bytes.length && timingSafeEqual(actual, bytes);
-}
-function json(res: ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
-  res.end(JSON.stringify(body));
-}
 async function credentials(req: IncomingMessage) {
-  if (!req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415, 'Send JSON credentials.');
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 4096) throw new HttpError(413, 'Request too large.');
-    chunks.push(chunk);
-  }
-  let body;
-  try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-  catch { throw new HttpError(400, 'Invalid JSON.'); }
+  const body = await readJson(req, 4096);
   const username = typeof body?.username === 'string' ? body.username.normalize('NFKC').trim().toLowerCase() : '';
   const password = body?.password;
   if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{2,31}$/u.test(username)) throw new HttpError(400, 'Username must be 3–32 letters, numbers, underscores or hyphens.');
-  if (typeof password !== 'string' || password.length < 10 || password.length > 128) throw new HttpError(400, 'Password must be 10–128 characters.');
+  validPassword(password);
   return { username, password };
 }
 type Account = { id: string; username: string; password_hash: string; quota_bytes: string; disabled: boolean };
 
-export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' }: { databaseUrl: string; port?: number; host?: string }) {
+export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1', storage = storageFromEnv(), limits: overrides = {} }: { databaseUrl: string; port?: number; host?: string; storage?: StorageConfig; limits?: Partial<Limits> }) {
+  const limits = { ...defaultLimits, ...overrides };
+  for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value <= 0) throw new Error('Cloud limits must be positive integers.');
+  if (limits.partBytes < 102400 || limits.partBytes > 64 * 1024 * 1024) throw new Error('Choose a part size from 100 KiB to 64 MiB allowing at most 10000 parts per file.');
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 10, connectionTimeoutMillis: 5000 });
   // pg discards failed idle clients. Keep serving so requests can reconnect after a database restart.
   pool.on('error', () => console.error('Cloud database connection interrupted; waiting for reconnection.'));
   try { await migrate(pool); } catch (error) { await pool.end(); throw error; }
+  const library = createLibrary(pool, storage, limits);
   const dummyPassword = await passwordHash(randomBytes(24).toString('hex'));
   // Bound password work and per-peer attempts. Forwarded IP headers are untrusted.
   const attempts = new Map<string, { count: number; until: number }>();
@@ -69,8 +43,15 @@ export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' 
   }
   async function session(user: Account) {
     const token = randomBytes(32).toString('hex');
-    await pool.query("INSERT INTO cloud_sessions(token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '30 days')", [digest(token), user.id]);
-    return { token, user: { id: user.id, username: user.username } };
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current=(await client.query<Account>('SELECT * FROM cloud_users WHERE id=$1 FOR UPDATE',[user.id])).rows[0];
+      if(!current || current.disabled || current.password_hash!==user.password_hash)throw new HttpError(401,'Account changed. Sign in again.');
+      await client.query("INSERT INTO cloud_sessions(token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '30 days')", [digest(token), user.id]);
+      await client.query('COMMIT');
+      return { token, user: { id: user.id, username: user.username } };
+    } catch(error){await client.query('ROLLBACK');throw error;} finally {client.release();}
   }
   async function account(req: IncomingMessage): Promise<Account> {
     const token = /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization ?? '')?.[1];
@@ -94,7 +75,7 @@ export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' 
         if (path.endsWith('/register')) {
           const hash = await passwordHash(password);
           const result = await pool.query<Account>(
-            'INSERT INTO cloud_users(id, username, password_hash) VALUES ($1, $2, $3) ON CONFLICT(username) DO NOTHING RETURNING *', [randomUUID(), username, hash]);
+            'INSERT INTO cloud_users(id, username, password_hash, quota_bytes) VALUES ($1, $2, $3, $4) ON CONFLICT(username) DO NOTHING RETURNING *', [randomUUID(), username, hash, limits.quotaBytes]);
           if (!result.rows[0]) throw new HttpError(409, 'That username is already registered.');
           return json(res, 201, await session(result.rows[0]));
         }
@@ -102,6 +83,27 @@ export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' 
         const valid = await matches(password, user?.password_hash ?? dummyPassword);
         if (!valid || !user || user.disabled) throw new HttpError(401, 'Username or password is incorrect.');
         return json(res, 200, await session(user));
+      } finally { authenticating -= 1; }
+    }
+    if (path === '/v1/auth/password' && req.method === 'POST') {
+      admit(req);
+      authenticating += 1;
+      try {
+      const user = await account(req);
+      const body = await readJson(req, 4096);
+      validPassword(body.newPassword);
+      if (typeof body.oldPassword !== 'string' || body.oldPassword.length > 128 || !await matches(body.oldPassword, user.password_hash)) throw new HttpError(403, 'Current password is incorrect.');
+      const hash = await passwordHash(body.newPassword);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const changed = await client.query('UPDATE cloud_users SET password_hash = $1 WHERE id = $2 AND password_hash = $3 AND NOT disabled RETURNING id', [hash, user.id, user.password_hash]);
+        if (!changed.rowCount) throw new HttpError(409, 'The account changed. Sign in again.');
+        await client.query('DELETE FROM cloud_sessions WHERE user_id = $1', [user.id]);
+        await client.query('COMMIT');
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+      return json(res, 200, { signedOut: true });
       } finally { authenticating -= 1; }
     }
     if (path === '/v1/me' && req.method === 'GET') {
@@ -115,8 +117,9 @@ export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' 
     }
     if (path === '/v1/space' && req.method === 'GET') {
       const user = await account(req);
-      return json(res, 200, { ownerId: user.id, quotaBytes: Number(user.quota_bytes), usedBytes: 0, reservedBytes: 0 });
+      return json(res, 200, { ...await library.space(user), limits: { fileBytes: limits.fileBytes, snapshotBytes: limits.snapshotBytes, partBytes: limits.partBytes } });
     }
+    if (/^\/v1\/(items|uploads)(\/|$)/.test(path)) return library.route(req, res, await account(req));
     throw new HttpError(404, 'Not found.');
   }
   const server = createServer((req, res) => {
@@ -134,9 +137,13 @@ export async function startCloud({ databaseUrl, port = 8080, host = '127.0.0.1' 
   } catch (error) { await pool.end(); throw error; }
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Cloud service did not bind a TCP port.');
+  let cleaning: Promise<void> | undefined;
+  const sweep = setInterval(() => { if (!cleaning) cleaning = library.cleanup().catch(() => {}).finally(() => { cleaning=undefined; }); }, limits.cleanupSeconds * 1000).unref();
   return {
     origin: `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${address.port}`,
     async close() {
+      clearInterval(sweep);
+      await cleaning;
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       await pool.end();
     },

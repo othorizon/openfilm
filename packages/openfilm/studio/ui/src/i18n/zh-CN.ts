@@ -6,6 +6,18 @@ const FILES = typeof navigator !== 'undefined' && /^win/i.test(navigator.platfor
   : typeof navigator !== 'undefined' && /^mac/i.test(navigator.platform) ? '访达' : '文件管理器';
 
 export const zhCN: Words = {
+  cloudLibrary: {
+    available: '可用空间',
+    title: '云素材库', mine: '我的素材', public: '公开素材', snapshot: '草稿快照', result: '剪辑结果', transfers: '传输任务',
+    intro: '云素材下载到本地项目后即可剪辑。剪辑和导出仍在本机进行。', signIn: '请先在“设置 → 云账户”中登录，再使用云素材库。',
+    project: '本地项目', chooseProject: '选择项目', search: '搜索名称', tag: '按标签筛选', type: '全部素材类型', image: '图片', video: '视频', audio: '音频',
+    refresh: '刷新', upload: '上传文件', saveDraft: '保存草稿快照', source: '文件路径（绝对路径或项目内相对路径）', choose: '选择文件', tags: '上传标签，以逗号分隔',
+    confirmUpload: '上传到你的云空间？', confirmSnapshot: '为当前项目保存一个新的云快照？', confirmShare: '向所有已登录用户公开分享此素材？', confirmDelete: '永久删除此云端内容？',
+    deleteHint: '云端没有回收站。已经下载到本地项目中的副本仍可使用。', preview: '预览', download: '下载到项目', restore: '恢复为新项目', publish: '公开分享', withdraw: '撤回公开', share: '转为公开素材', delete: '删除',
+    private: '私有', shared: '公开', removed: '已被下架', empty: '没有符合筛选条件的云端内容。', pause: '暂停', resume: '继续', cancel: '取消传输', close: '关闭', more: '加载更多',
+    newPassword: '新密码', oldPassword: '当前密码', changePassword: '修改密码', passwordHint: '修改密码后，所有云账户会话都会退出登录。',
+    running: '传输中', queued: '等待中', paused: '已暂停', error: '失败', completed: '已完成', cancelled: '已取消', noTransfers: '暂无传输任务。', reserved: '上传预留空间', openProject: '打开恢复的项目',
+  },
   nav: {
     projects: '项目',
     desktop: '桌面版',

@@ -1,5 +1,6 @@
 import React from 'react';
 import { api, type CloudAccount } from '@/api';
+import { CloudLibrary } from '../CloudLibrary';
 import { useT } from '@/i18n';
 import { SettingsButton, SettingsField, SettingsGroup, SettingsItem, SettingsPage, settingsError } from './ui';
 
@@ -10,6 +11,7 @@ export function CloudSection() {
   const [url, setUrl] = React.useState('');
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
   const [mode, setMode] = React.useState<'login' | 'register'>('login');
   const [busy, setBusy] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -24,7 +26,7 @@ export function CloudSection() {
   }, []);
 
   async function run(action: () => Promise<CloudAccount>) {
-    setBusy(true); setError(''); setPassword('');
+    setBusy(true); setError(''); setPassword(''); setNewPassword('');
     // Remove the previous identity while an account or service change is pending.
     setAccount(null);
     try { apply(await action()); }
@@ -61,7 +63,17 @@ export function CloudSection() {
               <SettingsButton disabled={busy} onClick={() => void run(api.cloudSignOut)}>{t('settings.cloud.logout')}</SettingsButton>
             </>}
           />
-          {account.space ? <p className="py-4 text-[14px] text-[var(--text-muted)]">{t('settings.cloud.empty')}</p> : null}
+          {account.user ? <>
+            <form className="my-4 flex flex-col gap-3" onSubmit={e => { e.preventDefault(); void run(() => api.cloudPassword(password, newPassword)); }}>
+              <label htmlFor="cloud-old-password">{t('cloudLibrary.oldPassword')}</label>
+              <SettingsField id="cloud-old-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required maxLength={128}/>
+              <label htmlFor="cloud-new-password">{t('cloudLibrary.newPassword')}</label>
+              <SettingsField id="cloud-new-password" type="password" autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} required minLength={10} maxLength={128}/>
+              <p className="text-sm text-[var(--text-muted)]">{t('cloudLibrary.passwordHint')}</p>
+              <SettingsButton type="submit" disabled={busy}>{t('cloudLibrary.changePassword')}</SettingsButton>
+            </form>
+            <CloudLibrary key={`${account.serviceUrl}:${account.user.id}`} />
+          </> : null}
         </SettingsGroup>
       ) : account?.serviceUrl ? (
         <SettingsGroup title={t(`settings.cloud.${mode}`)}>

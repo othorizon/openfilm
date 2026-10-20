@@ -104,3 +104,37 @@ test('Studio and CLI share a cloud account without putting credentials in a proj
     await rm(scratch, { recursive: true, force: true });
   }
 });
+
+test('real CLI searches, imports, saves and restores drafts, uploads results and changes passwords',database,async()=>{
+  const {cloudFixture}=await import('./cloud-fixture.ts');const f=await cloudFixture();
+  const scratch=await mkdtemp(join(tmpdir(),'openfilm-cloud-cli-'));
+  process.env.OPENFILM_HOME=join(scratch,'home');process.env.OPENFILM_LIBRARY=join(scratch,'projects');
+  const studio=await startStudio({port:0,advertise:true,openBrowser:()=>{}});
+  const api=(path:string,body?:object)=>fetch(`${studio.origin}/api/${path}`,{method:body?'POST':'GET',headers:{'x-studio-key':studio.key!,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  async function command(args:string[],input=''){const result=await cli(args,input);assert.equal(result.code,0,result.stderr||result.stdout);return JSON.parse(result.stdout);}
+  async function transfer(args:string[]){const {transfer}=await command(args);return command(['wait',transfer.id]);}
+  try {
+    await command(['configure',f.cloud.origin]);await command(['register','alice','--password-stdin'],'alice-password-long');
+    const {project}=await (await api('projects',{name:'CLI film'})).json();
+    const file=join(project.path,'image.png');await writeFile(file,Buffer.from('CLI media'));
+    assert.equal((await cli(['upload',file,'--project',project.id])).code,1,'uploads require explicit authorization');
+    const uploaded=await transfer(['upload',file,'--project',project.id,'--yes']);
+    await command(['publish',uploaded.item.id,'--yes']);
+    await command(['register','bob','--password-stdin'],'bob-password-long');
+    const found=await command(['list','--scope','public','--tag','']);assert.equal(found.items[0].id,uploaded.item.id);
+    assert.ok((await command(['preview',uploaded.item.id])).url);
+    const download=await transfer(['download',uploaded.item.id,'--project',project.id]);assert.equal(download.result.path,'assets/image.png');
+    await writeFile(join(project.path,'scene.html'),'<div data-duration="2">Editable</div>');
+    assert.equal((await api(`projects/${project.id}/edit`,{ops:[{op:'insert',clip:{src:'scene.html'}}]})).status,200);
+    const snapshot=await transfer(['snapshot',project.id,'--yes']);
+    const restored=await transfer(['download',snapshot.item.id]);assert.notEqual(restored.result.project.id,project.id);
+    assert.match(await readFile(join(restored.result.project.path,'film.html'),'utf8'),/scene.html/);
+    const result=await transfer(['upload',file,'--project',project.id,'--kind','result','--yes']);
+    assert.equal((await command(['list','--kind','result','--project',project.id])).items[0].id,result.item.id);
+    await command(['share',result.item.id,'--yes']);
+    await command(['password','--password-stdin'],JSON.stringify({oldPassword:'bob-password-long',newPassword:'bob-new-password-long'}));
+    assert.equal((await command(['status'])).hasSession,false);
+    assert.equal((await cli(['login','bob','--password-stdin'],'bob-password-long')).code,1);
+    await command(['login','bob','--password-stdin'],'bob-new-password-long');
+  } finally {await studio.close();await f.close();await rm(scratch,{recursive:true,force:true});}
+});

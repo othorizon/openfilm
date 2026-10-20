@@ -93,7 +93,16 @@ export interface CloudAccount {
   notice?: string;
 }
 
+export interface CloudItem { id:string; ownerId:string; kind:'asset'|'snapshot'|'result'; name:string; mediaType:string; size:number; tags:string[]; visibility:string; withdrawn:boolean; createdAt:string; projectId:string|null }
+export interface CloudTransfer { id:string; name?:string; state:string; progress:number; size?:number; error?:string; direction:string; result?:{path?:string;project?:Project} }
 export const api = {
+  cloudItems: (query:string) => call<{items:CloudItem[];nextOffset:number|null}>(`cloud/items?${query}`),
+  cloudAction: (id:string,action:string,confirmed=false) => call<{item:CloudItem;url?:string}>(`cloud/items/${id}/${action}`,{method:'POST',json:{confirmed}}),
+  cloudTransfers: () => call<{transfers:CloudTransfer[]}>('cloud/transfers'),
+  cloudTransfer: (body:unknown) => call<{transfer:CloudTransfer}>('cloud/transfers',{method:'POST',json:body}),
+  cloudTransferAction: (id:string,action:string) => call<{transfer:CloudTransfer}>(`cloud/transfers/${id}/${action}`,{method:'POST',json:{}}),
+  cloudPassword: (oldPassword:string,newPassword:string) => call<CloudAccount>('cloud/password',{method:'POST',json:{oldPassword,newPassword}}),
+  cloudPickFiles: () => call<{paths:string[]}>('pick-files',{method:'POST',json:{title:'Choose cloud upload files'}}),
   cloud: () => call<CloudAccount>('cloud'),
   configureCloud: (serviceUrl: string) => call<CloudAccount>('cloud/configure', { method: 'POST', json: { serviceUrl } }),
   cloudSignIn: (action: 'login' | 'register', username: string, password: string) =>

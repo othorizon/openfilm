@@ -882,6 +882,7 @@ export async function startStudio({ port = 4747, key, openBrowser = systemBrowse
   async function shutDown() {
     /* the file is ours unless a later Studio has written its own (with the same key: it is the machine's) */
     if (advertise && advertised()?.pid === process.pid) rmSync(runFile(), { force: true });
+    await cloudRoute.close();
     exports.stopAll();
     fetches.stopAll();
     await closePageFrames();

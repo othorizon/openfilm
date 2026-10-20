@@ -8,3 +8,5 @@ Studio's editor (`studio/ui/dist`) bundles:
 - **Lucide** icons (`lucide-react`): ISC License, © Lucide Contributors.
 
 The CLI depends on **playwright-core** (Apache License 2.0), which downloads a headless Chromium on first use.
+
+Portable cloud draft restoration uses **yauzl** (MIT License, © Josh Wolfe).

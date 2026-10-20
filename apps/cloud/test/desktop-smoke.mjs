@@ -2,17 +2,19 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { testDatabase } from './database.ts';
+import { ossServer } from './oss-server.ts';
 import { startCloud } from '../src/server.ts';
 import { prepare, DESKTOP, waitForCdp } from '../../desktop/bench/app.mjs';
 
 const require = createRequire(new URL('../../desktop/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const db = await testDatabase();
-const cloud = await startCloud({ databaseUrl: db.url, port: 0 });
+const oss = await ossServer();
+const cloud = await startCloud({ databaseUrl: db.url, port: 0, storage: oss.config });
 const scratch = await mkdtemp(join(tmpdir(), 'openfilm-cloud-desktop-'));
 prepare(scratch);
 const env = { ...process.env, OPENFILM_DESKTOP_FLAVOR: 'bench', OPENFILM_BENCH_DIR: scratch, OPENFILM_NO_UPDATE_CHECK: '1' };
@@ -66,14 +68,33 @@ try {
   await page.getByLabel('Password', { exact: true }).fill('desktop-test-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByText('desktop-user', { exact: true }).waitFor();
+  const image=join(scratch,'desktop.png');
+  await writeFile(image,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=','base64'));
+  const projectId=new URL(page.url()).pathname.split('/')[2];
+  await page.getByLabel('Local project',{exact:true}).selectOption(projectId);
+  await page.getByLabel('File path (absolute or project-relative)',{exact:true}).fill(image);
+  await page.getByRole('button',{name:'Upload file',exact:true}).click();
+  await page.getByRole('dialog',{name:'Upload to your cloud space?',exact:true}).getByRole('button').last().click();
+  await page.getByText('Completed',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'My assets',exact:true}).click();
+  await page.getByRole('heading',{name:'desktop.png',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Preview',exact:true}).click();
+  await page.getByAltText('desktop.png',{exact:true}).waitFor();
+  assert.ok(await page.getByAltText('desktop.png',{exact:true}).evaluate(image=>image.complete&&image.naturalWidth===1));
+  await page.getByRole('button',{name:'Make public',exact:true}).click();
+  await page.getByRole('dialog',{name:'Share this media with all signed-in users?',exact:true}).getByRole('button').last().click();
+  await page.getByRole('button',{name:'Make private',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Download into project',exact:true}).click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('span')].filter(el=>el.textContent==='Completed').length>=2);
+  await page.getByText('assets/desktop.png',{exact:true}).waitFor();
   if (process.env.OPENFILM_TEST_ARTIFACTS) {
     await mkdir(process.env.OPENFILM_TEST_ARTIFACTS, { recursive: true });
-    await page.screenshot({ path: join(process.env.OPENFILM_TEST_ARTIFACTS, 'cloud-account.png') });
+    await page.screenshot({ path: join(process.env.OPENFILM_TEST_ARTIFACTS, 'cloud-library.png') });
   }
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByLabel('Password', { exact: true }).waitFor();
   assert.equal(await page.getByText('desktop-user', { exact: true }).count(), 0);
-  console.log('Desktop acceptance passed: configure, register, private space, sign out, bad password, sign in.');
+  console.log('Desktop acceptance passed: accounts, media selection, confirmed direct upload, preview, sharing, local import and transfer progress.');
 } catch (error) {
   console.error(logs.slice(-4000));
   throw error;
@@ -87,6 +108,7 @@ try {
     clearTimeout(kill);
   }
   await cloud.close();
+  await oss.close();
   await db.close();
   await rm(scratch, { recursive: true, force: true });
 }

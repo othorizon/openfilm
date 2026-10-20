@@ -1,101 +1,111 @@
-# Cloud accounts
+# OpenFilm Cloud
 
-The first cloud slice provides accounts and an empty personal space. File transfers,
-OSS integration, sharing, password changes and administrator controls are tracked
-in the remaining subissues of [#1](https://github.com/othorizon/openfilm/issues/1).
-Editing, media and projects remain local and work without a cloud account.
+An optional self-hosted account and library service. PostgreSQL stores identities,
+metadata, quota reservations and transfer state. A private Alibaba Cloud OSS bucket stores
+file objects. Studio on the user's device sends file bytes directly to OSS, including
+multipart uploads and retries. The cloud service only authorizes and verifies operations.
+Editing, packaging, restoring and rendering remain local.
 
 ## Run the service
 
-From the repository root, with Docker Compose installed:
+Copy `deploy/cloud/env.example` to an operator-owned file outside the checkout, restrict
+its permissions to the operator, and replace the placeholders. Use a random hexadecimal
+`CLOUD_DATABASE_PASSWORD`. Configure the OSS bucket, region, HTTPS endpoint, dedicated
+prefix and an operator key with access only to that prefix. Keep the bucket private.
+`OSS_CNAME=true` supports an OSS custom domain; normal bucket endpoints use `false`.
 
 ```sh
-cp deploy/cloud/env.example deploy/cloud/.env
-openssl rand -hex 32
-# Put the generated value in deploy/cloud/.env as CLOUD_DATABASE_PASSWORD.
-docker compose --env-file deploy/cloud/.env -f deploy/cloud/compose.yaml up --build -d
-curl http://127.0.0.1:8080/health
+docker compose --env-file /secure/openfilm-cloud.env -f deploy/cloud/compose.yaml up --build -d
+docker compose --env-file /secure/openfilm-cloud.env -f deploy/cloud/compose.yaml ps
 ```
 
-The service applies versioned SQL migrations before listening. PostgreSQL has a
-persistent named volume and is not published to the host. `docker compose down`
-preserves accounts; `down -v` removes the database. Back up PostgreSQL before
-deploying future migrations.
+The service binds to `127.0.0.1:8080` by default. Put a TLS reverse proxy in front of it
+for remote clients. The deployment operator chooses the public domain and TLS setup.
+`GET /health` checks PostgreSQL connectivity. Migrations run transactionally at startup;
+back up PostgreSQL and the OSS prefix together before upgrading. The PostgreSQL volume
+persists across restarts. Do not run `down --volumes` against data you need.
 
-The HTTP listener is published only on loopback. For access from other devices,
-put a TLS reverse proxy in front of it and configure the client with its HTTPS
-URL. Plain HTTP is accepted by the client only for localhost development.
-Registration is open to anyone who can reach this service.
+To develop without Docker, set `DATABASE_URL`, the `OSS_*` variables and run
+`corepack pnpm --filter @openfilm/cloud start`. With no `OSS_BUCKET`, accounts work but
+library operations return a configuration error. OSS credentials are read by the cloud
+process only. Never put them in Studio, projects, snapshots, screenshots or source control.
 
-There are 30 registration/login attempts per minute per direct peer, with at most
-four password operations in flight per service process. Forwarded-IP headers are
-not trusted. A reverse proxy therefore shares that peer limit; deployments with
-many users should add authentication rate limiting at the proxy and adjust the
-service policy deliberately. Limits reset on service restart.
+## Accounts and administration
 
-Without Docker, use Node 24 (or Node >=22.18) and PostgreSQL 17:
+In Studio, open Settings → Cloud account, set the service URL, then register or sign in.
+The cloud library is also available from the cloud button in the media pane. Choose a
+local project for uploads and media imports. Snapshots restore a new project and do not
+require an existing project. Settings also provides password changes, which revoke all
+cloud sessions. Cloud failures do not disable local projects.
+
+Passwords are scrypt hashes; sessions last 30 days and only token hashes are stored in
+PostgreSQL. Studio keeps its session in its private home outside project directories.
+Switching accounts or service URLs pauses active transfers. Resume explicitly after
+signing in to the original service and account. A changed source file must be uploaded
+as a new transfer. Failed transfers preserve checkpoints; cancel releases reservations.
+
+Administrator commands run on the server with its privileged `DATABASE_URL`. They are
+not public HTTP endpoints. Register the operator account first, then initialize it:
 
 ```sh
-pnpm install --frozen-lockfile
-DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/DATABASE pnpm --filter @openfilm/cloud start
+# Run inside the cloud container (or with DATABASE_URL in the server environment).
+node apps/cloud/src/admin.ts init operator
+node apps/cloud/src/admin.ts disable alice --as operator
+node apps/cloud/src/admin.ts enable alice --as operator
+node apps/cloud/src/admin.ts quota alice 20000000000 --as operator
+node apps/cloud/src/admin.ts remove <asset-id> --as operator
+# Supply the new password on stdin, never in arguments or shell history.
+node apps/cloud/src/admin.ts reset alice --as operator --password-stdin
 ```
 
-`HOST` defaults to `0.0.0.0`, `PORT` to `8080`. The database role needs permission
-to apply migrations. No OSS credentials are needed for this slice.
+For Compose, prefix those commands with `docker compose --env-file
+/secure/openfilm-cloud.env -f deploy/cloud/compose.yaml exec -T cloud`. Resetting a password
+or disabling an account revokes its sessions. Disabled owners disappear from public
+catalogs. Removing a shared asset stops new public access and prevents republishing the
+same result through a new asset entry. The owner retains private access to their files.
 
-## Desktop and CLI
+## Storage, limits and recovery
 
-In **Settings → Cloud account**, save the service URL, create an account or sign
-in, and view **My cloud space**. The initial quota is 10 GB. The interface also
-provides refresh and sign out.
+Defaults use decimal bytes: 10 GB per account, 2 GB per asset/result, 5 GB per snapshot.
+`CLOUD_QUOTA_BYTES` changes the default for new accounts; `admin quota` changes an existing
+account. `CLOUD_FILE_BYTES` and `CLOUD_SNAPSHOT_BYTES` set per-file limits.
+`CLOUD_PART_BYTES` defaults to 8 MiB; use 100 KiB–64 MiB and at most 10,000 parts per file.
+`CLOUD_UPLOAD_SECONDS` defaults to 86,400 seconds. `CLOUD_CLEANUP_SECONDS` defaults to 300.
+Expired/cancelled uploads release reservations and their objects/parts are swept. Small
+uploads use staging objects; those are swept after the last 15-minute PUT grant expires.
+Configure an OSS lifecycle rule to abort incomplete multipart uploads older than two days
+inside the dedicated prefix, covering a process crash during multipart initialization.
 
-The CLI uses the same local Studio instance as the desktop:
+Small uploads are verified using OSS size, MD5 and SHA-256 metadata, then copied within
+OSS to an immutable final key. Large uploads use a unique multipart upload ID, fixed part
+checksums, verified part sizes and consumed completion grants. Quota uses a lock per
+account to serialize reservations and completion. A result shared as an asset references
+the same blob; it counts once until its last reference is deleted.
+
+Downloads and previews are signed for 10,800 seconds (three hours). This does not impose
+a deadline on a transfer that already began. Revocation blocks new grants immediately;
+a previously signed URL may remain usable for the rest of its three-hour window. Every
+resume and expired-link refresh rechecks authorization. Range downloads persist verified
+chunks and verify the complete SHA-256 before importing any file.
+
+Snapshots copy approved linked files/directories into a portable ZIP, with per-file hashes
+and a versioned manifest. They include project pages, code, media and portable editor state.
+Hidden credentials, conversations, history, caches and generated exports are excluded.
+Restore validates paths, duplicates, file sizes and checksums in an isolated folder before
+opening a new project identity. Symbolic links in downloaded archives are rejected.
+
+## Validation
 
 ```sh
-openfilm cloud configure http://127.0.0.1:8080
-read -rs -p 'Password: ' cloud_password
-printf '%s' "$cloud_password" | openfilm cloud register alice --password-stdin
-unset cloud_password
-openfilm cloud status
-openfilm cloud logout
+OPENFILM_TEST_DATABASE_URL=postgres://... corepack pnpm --filter @openfilm/cloud test
+# After pnpm build, with a graphical display available:
+OPENFILM_TEST_DATABASE_URL=postgres://... corepack pnpm --filter @openfilm/cloud test:desktop
+# Explicit real OSS test: private JSON config with bucket, region, endpoint, prefix and keys.
+OPENFILM_TEST_DATABASE_URL=postgres://... OPENFILM_OSS_TEST_CONFIG=/secure/oss-test.json \
+  node apps/cloud/test/oss-acceptance.mjs
 ```
 
-Use `login` in place of `register` for an existing account. Passwords are read
-from stdin, never command arguments. Results are JSON; failures exit nonzero.
-Usernames are case insensitive, 3–32 letters/numbers/underscores/hyphens and must
-start with a letter or number. Passwords contain 10–128 characters.
-
-Sessions last 30 days. Passwords use salted scrypt hashes; only a hash of each
-random session token is stored in PostgreSQL. The local token is in
-`OPENFILM_HOME/cloud-account.json` (normally `~/.openfilm/cloud-account.json`),
-with owner-only file permissions on Unix. It is never returned to the renderer
-or written into a project. Development/preview desktop flavors have separate
-Studio homes; launch a CLI with the corresponding `OPENFILM_HOME` to share them.
-
-Switching accounts or service addresses discards the old local session and
-attempts to revoke it remotely. Signing out while offline clears this device
-immediately, but cannot revoke the remote token until the service is reachable;
-the UI reports this limitation. An unavailable service never displays a cached
-identity as authenticated and does not prevent opening or editing local films.
-
-## Verification
-
-Use a disposable database. Tests create isolated schemas, exercise real cloud
-and Studio HTTP endpoints plus the actual CLI, and remove those schemas:
-
-```sh
-OPENFILM_TEST_DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/TEST_DATABASE \
-  pnpm --filter @openfilm/cloud test
-pnpm typecheck
-```
-
-Without `OPENFILM_TEST_DATABASE_URL`, cloud integration tests explicitly skip.
-CI runs them against a real PostgreSQL service. No OSS tests are claimed by this
-account-only change.
-
-For the actual desktop flow, install the Electron binary and its system libraries,
-run `pnpm build`, then run `pnpm --filter @openfilm/cloud test:desktop` with the
-same test database environment variable. On Linux this requires an X display
-(a virtual display such as Xvfb also works). It uses isolated application data and
-ports 4767/19327. Set `OPENFILM_TEST_ARTIFACTS` to
-save a screenshot of the signed-in account.
+Routine tests use real Studio, CLI, cloud service and PostgreSQL with an OSS HTTP double.
+The opt-in OSS test writes under a unique child prefix and deletes only its own exact keys
+and upload IDs. Its logs contain no credentials or signed URLs. See
+[cloud-library-validation.md](cloud-library-validation.md) for acceptance coverage.

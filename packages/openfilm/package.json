@@ -59,7 +59,8 @@
     "node": ">=22.2"
   },
   "dependencies": {
-    "playwright-core": "1.61.1"
+    "playwright-core": "1.61.1",
+    "yauzl": "3.4.0"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",

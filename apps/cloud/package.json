@@ -5,14 +5,17 @@
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types src/main.ts",
+    "admin": "node --experimental-strip-types src/admin.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "test:desktop": "node --experimental-strip-types test/desktop-smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "ali-oss": "6.23.0",
     "pg": "8.23.1"
   },
   "devDependencies": {
+    "@types/ali-oss": "6.23.3",
     "@types/node": "^22.0.0",
     "@types/pg": "8.23.1",
     "typescript": "^5.9.3"

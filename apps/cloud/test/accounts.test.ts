@@ -5,6 +5,22 @@ import { startCloud } from '../src/server.ts';
 
 const database = { skip: !process.env.OPENFILM_TEST_DATABASE_URL && 'Set OPENFILM_TEST_DATABASE_URL for real PostgreSQL integration tests.' };
 
+test('changing a password rejects the old password and revokes every existing session', database, async () => {
+  const db = await testDatabase();
+  const cloud = await startCloud({ databaseUrl: db.url, port: 0 });
+  const ask = (path: string, body: object, token?: string) => fetch(`${cloud.origin}/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+  });
+  try {
+    const { token } = await (await ask('auth/register', { username: 'alice', password: 'alice-password-long' })).json();
+    assert.equal((await ask('auth/password', { oldPassword: 'wrong-password', newPassword: 'new-password-long' }, token)).status, 403);
+    assert.equal((await ask('auth/password', { oldPassword: 'alice-password-long', newPassword: 'new-password-long' }, token)).status, 200);
+    assert.equal((await fetch(`${cloud.origin}/v1/me`, { headers: { authorization: `Bearer ${token}` } })).status, 401);
+    assert.equal((await ask('auth/login', { username: 'alice', password: 'alice-password-long' })).status, 401);
+    assert.equal((await ask('auth/login', { username: 'alice', password: 'new-password-long' })).status, 200);
+  } finally { await cloud.close(); await db.close(); }
+});
+
 test('a registered user can sign in and see their personal cloud space', database, async () => {
   const db = await testDatabase();
   const cloud = await startCloud({ databaseUrl: db.url, port: 0 });
@@ -19,7 +35,7 @@ test('a registered user can sign in and see their personal cloud space', databas
     assert.ok(token);
     const space = await fetch(`${cloud.origin}/v1/space`, { headers: { authorization: `Bearer ${token}` } });
     assert.equal(space.status, 200);
-    assert.deepEqual(await space.json(), { ownerId: user.id, quotaBytes: 10_000_000_000, usedBytes: 0, reservedBytes: 0 });
+    assert.deepEqual(await space.json(), { ownerId: user.id, quotaBytes: 10_000_000_000, usedBytes: 0, reservedBytes: 0, limits: { fileBytes: 2_000_000_000, snapshotBytes: 5_000_000_000, partBytes: 8 * 1024 * 1024 } });
     const login = await fetch(`${cloud.origin}/v1/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username: 'alice', password: 'a-long-test-password' }),
